@@ -1,6 +1,9 @@
-# Contextualize
+# 🧬 Contextualize
 
 **Contextualize** is a command-line tool that turns a repository into **AI-ready context**: it walks your project, infers dependencies, compiles focused documentation cards for those libraries, and keeps everything under a single workspace folder (`.contextualize/`) that agents and humans can read.
+
+<img width="1470" height="671" alt="Screenshot 2026-03-21 at 4 29 12 PM" src="https://github.com/user-attachments/assets/951fba4c-7046-4aec-9441-8304503ec999" />
+
 
 Use it when you want coding assistants to “know” your stack—frameworks, SDKs, and services—without pasting huge READMEs into every chat.
 
