@@ -1,4 +1,4 @@
-# 🧬 Contextualize
+# Contextualize CLI
 
 **Contextualize** is a command-line tool that turns a repository into **AI-ready context**: it walks your project, infers dependencies, compiles focused documentation cards for those libraries, and keeps everything under a single workspace folder (`.contextualize/`) that agents and humans can read.
 
