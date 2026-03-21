@@ -1,15 +1,5 @@
-import { existsSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { createOpenAI } from "@ai-sdk/openai";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { streamText } from "ai";
-import dotenv from "dotenv";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const envInBin = resolve(__dirname, ".env.local");
-const envInRoot = resolve(__dirname, "..", ".env.local");
-dotenv.config({ path: existsSync(envInBin) ? envInBin : envInRoot, quiet: true });
 
 export function extractDependencySignals(concatText) {
   const lines = concatText.split('\n');
@@ -41,10 +31,14 @@ export async function analyzeDependencies(concatText) {
   const signals = extractDependencySignals(concatText);
   if (!signals.trim()) return "[]";
 
-  const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error("GEMINI_API_KEY is not set — add it to .env.local");
+  }
+
+  const google = createGoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY });
 
   const result = streamText({
-    model: openai("gpt-4o-mini"),
+    model: google("gemini-2.5-flash"),
     system: `You identify external third-party tools, APIs, and services used in a project.
 Given import statements and environment variable names, return a JSON array of objects with shape:
 { "name": string, "category": string }
@@ -55,6 +49,5 @@ Respond with raw JSON only — no markdown, no code fences, no explanation.`,
   });
 
   const raw = await result.text;
-  // Strip markdown code fences if the model wraps the response
   return raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
 }

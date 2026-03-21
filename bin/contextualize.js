@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { execSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -10,7 +10,7 @@ import {
 } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createOpenAI } from "@ai-sdk/openai";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { streamText } from "ai";
 import dotenv from "dotenv";
 import { printBanner } from "./banner.js";
@@ -156,7 +156,8 @@ async function scanPlaceholder() {
       continue;
     }
 
-    const outputFile = join(concatsOutputDir, `${basename(folder)}.txt`);
+    const safeName = folder === "." ? "_root_" : folder.replace(/\//g, "_");
+    const outputFile = join(concatsOutputDir, `${safeName}.txt`);
     writeFileSync(outputFile, concatText, "utf8");
     confirmationBullet("Scanned through " + folder);
   }
@@ -195,32 +196,138 @@ async function scanPlaceholder() {
     all_dependencies.push(...deps);
     confirmationBullet(`Scanned dependencies from ${concatFile}`);
   }
-  writeFileSync(join(rootPath, "scan/dependencies.json"), JSON.stringify(all_dependencies, null, 2), "utf8");
+  // Deduplicate by lowercase name — scanning file-by-file can produce repeated entries
+  const _seen = new Set();
+  const unique_dependencies = all_dependencies.filter((dep) => {
+    const key = (dep.name ?? "").toLowerCase();
+    if (_seen.has(key)) return false;
+    _seen.add(key);
+    return true;
+  });
+
+  writeFileSync(join(rootPath, "scan/dependencies.json"), JSON.stringify(unique_dependencies, null, 2), "utf8");
   if (rateLimited) {
-    confirmation("Partial dependency analysis saved (rate limited)");
+    confirmation(`Partial dependency analysis saved (rate limited) — ${unique_dependencies.length} unique deps`);
   } else {
-    confirmation("Dependencies analyzed and saved");
+    confirmation(`Dependencies analyzed and saved — ${unique_dependencies.length} unique deps`);
   }
 }
 
-function fetchDocs(inputJsonPath, outputDir) {
-  const python = resolve(__dirname, "..", ".venv", "bin", "python3");
-  const cmd = existsSync(python) ? python : "python3";
-  const args = ["-m", "contextualize_docs", "--output-dir", outputDir];
-  if (inputJsonPath) {
-    args.push("--input", inputJsonPath);
-  }
+/**
+ * Reads all concat files from .contextualize/scan/concats and asks the AI
+ * to synthesise a detailed task description for the codebase.
+ * Returns the task string, or null if the directory is missing / empty.
+ */
+async function understandTask() {
+  const concatsDir = join(process.cwd(), ".contextualize/scan/concats");
+  if (!existsSync(concatsDir)) return null;
+
+  let files;
   try {
-    const result = execSync([cmd, ...args].join(" "), {
-      encoding: "utf8",
-      cwd: resolve(__dirname, ".."),
-    });
-    return result;
-  } catch (err) {
-    console.error("Docs compilation failed:", err.message);
-    process.exitCode = 1;
-    return JSON.stringify({ success: false, error: err.message });
+    files = readdirSync(concatsDir).filter((f) => f.endsWith(".txt"));
+  } catch {
+    return null;
   }
+  if (files.length === 0) return null;
+
+  const MAX_CHARS = 20_000;
+  const perFile = Math.floor(MAX_CHARS / files.length);
+  const samples = [];
+
+  for (const file of files) {
+    try {
+      const content = readFileSync(join(concatsDir, file), "utf8");
+      const snippet = content.slice(0, perFile).trim();
+      if (snippet) samples.push(`=== ${file} ===\n${snippet}`);
+    } catch { /* skip unreadable */ }
+  }
+
+  if (samples.length === 0) return null;
+
+  if (!process.env.GEMINI_API_KEY) {
+    printBoxOrange("GEMINI_API_KEY is not set — cannot understand codebase task.");
+    return null;
+  }
+
+  const google = createGoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY });
+  const result = streamText({
+    model: google("gemini-2.5-flash"),
+    system: `You are a senior engineer. Given concatenated source files from a project, write a detailed task description (3-4 sentences) that describes exactly what this project/codebase is trying to solve or build. Be specific about the technologies used, the core features, and the end goal. Write it in plain prose — no bullet points, no headings.`,
+    prompt: `Analyze these source files and describe what this project is building/solving:\n\n${samples.join("\n\n")}`,
+  });
+
+  const task = await result.text;
+  return task.trim();
+}
+
+/**
+ * Full "fetch docs" workflow:
+ * 1. Understand the codebase task from concat files.
+ * 2. Call the Python compile-from-deps pipeline with that task.
+ */
+async function runFetchDocs() {
+  printBoxBlue("Understanding your codebase...");
+
+  const task = await understandTask();
+  if (!task) {
+    printBoxOrange(
+      "No concat files found in .contextualize/scan/concats\n" +
+      "Run `contextualize scan` first."
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  printBlueBullet("Task: " + task.slice(0, 160) + (task.length > 160 ? "..." : ""));
+
+  const depsFile = join(process.cwd(), ".contextualize/scan/dependencies.json");
+  if (!existsSync(depsFile)) {
+    printBoxOrange(
+      "Dependencies file not found at .contextualize/scan/dependencies.json\n" +
+      "Run `contextualize scan` first."
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  printBoxBlue("Fetching and compiling documentation...");
+
+  const packageRoot = resolve(__dirname, "..");
+  const pythonVenv = join(packageRoot, ".venv", "bin", "python3");
+  const python = existsSync(pythonVenv) ? pythonVenv : "python3";
+
+  // Always ensure the contextualize package root is on PYTHONPATH so
+  // contextualize_docs can be found regardless of which venv is active.
+  const pythonPath = process.env.PYTHONPATH
+    ? `${packageRoot}:${process.env.PYTHONPATH}`
+    : packageRoot;
+
+  const result = spawnSync(
+    python,
+    [
+      "-m", "contextualize_docs",
+      "compile-from-deps",
+      "--deps-file", ".contextualize/scan/dependencies.json",
+      "--output-dir", ".contextualize",
+      "--task", task,
+      "--verbose",
+    ],
+    {
+      encoding: "utf8",
+      maxBuffer: 100 * 1024 * 1024,
+      cwd: process.cwd(),
+      stdio: "inherit",
+      env: { ...process.env, PYTHONPATH: pythonPath },
+    },
+  );
+
+  if (result.status !== 0) {
+    printBoxOrange("Docs compilation failed.");
+    process.exitCode = result.status ?? 1;
+    return;
+  }
+
+  confirmation("Documentation fetched and compiled successfully.");
 }
 
 function printUsage() {
@@ -277,9 +384,7 @@ async function main(argv) {
   }
 
   else if (command === "fetch" && subcommand === "docs") {
-    const inputPath = argv[2] || null;
-    const outputDir = argv[3] || ".contextualize";
-    console.log(fetchDocs(inputPath, outputDir));
+    await runFetchDocs();
     return;
   }
 
@@ -289,9 +394,14 @@ async function main(argv) {
   }
 
   else if (command) {
-    const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    if (!process.env.GEMINI_API_KEY) {
+      printBoxOrange("GEMINI_API_KEY is not set — add it to .env.local");
+      process.exitCode = 1;
+      return;
+    }
+    const google = createGoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY });
     const result = streamText({
-      model: openai("gpt-4o"),
+      model: google("gemini-2.5-flash"),
       prompt: argv.join(" "),
     });
     for await (const textPart of result.textStream) {

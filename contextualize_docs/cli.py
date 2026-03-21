@@ -2,7 +2,7 @@
 
 Two modes:
     compile              — reads pre-built input JSON, runs pipeline
-    compile-from-deps    — reads dependencies.txt, fetches real docs, runs pipeline
+    compile-from-deps    — reads dependencies.json, fetches real docs, runs pipeline
 
 Usage::
 
@@ -10,7 +10,7 @@ Usage::
         --input payload.json --output-dir .contextualize
 
     python -m contextualize_docs compile-from-deps \\
-        --deps-file .contextualize/scan/dependencies.txt \\
+        --deps-file .contextualize/scan/dependencies.json \\
         --output-dir .contextualize \\
         --task "Add password reset flow"
 """
@@ -67,8 +67,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     from_deps.add_argument(
         "--deps-file", type=Path,
-        default=Path(".contextualize/scan/dependencies.txt"),
-        help="Path to dependencies.txt.",
+        default=Path(".contextualize/scan/dependencies.json"),
+        help="Path to dependencies.json.",
     )
     from_deps.add_argument(
         "--output-dir", type=Path, required=True,
@@ -153,8 +153,11 @@ def _run_pipeline_and_emit(
         sys.exit(1)
 
     # Allow input JSON to override model
-    if payload.generation_config.llm_model and hasattr(provider, "_model"):
-        provider._model = payload.generation_config.llm_model  # noqa: SLF001
+    if payload.generation_config.llm_model:
+        if hasattr(provider, "set_model"):
+            provider.set_model(payload.generation_config.llm_model)  # type: ignore[attr-defined]
+        elif hasattr(provider, "_model"):
+            provider._model = payload.generation_config.llm_model  # noqa: SLF001
 
     try:
         summary = asyncio.run(

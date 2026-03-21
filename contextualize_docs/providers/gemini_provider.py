@@ -17,6 +17,11 @@ from contextualize_docs.providers.base import JSONRepairError, LLMProvider, Prov
 logger = get_logger("providers.gemini")
 
 
+def _normalize_model_name(raw_model: str) -> str:
+    """Convert gateway-style Gemini model ids into SDK-compatible names."""
+    return raw_model.split("/", 1)[-1] if "/" in raw_model else raw_model
+
+
 def _extract_json(text: str) -> str:
     """Strip markdown fences and leading/trailing noise to isolate JSON."""
     # Remove ```json ... ``` fences
@@ -67,10 +72,14 @@ class GeminiProvider(LLMProvider):
                 "GEMINI_API_KEY is not set. Add it to .env.local or export it."
             )
         self._client = genai.Client(api_key=config.gemini_api_key)
-        self._model = config.default_llm_model
+        self._model = _normalize_model_name(config.default_llm_model)
         self._temperature = config.llm_temperature
         self._max_retries = config.llm_max_retries
         self._timeout = config.llm_timeout_seconds
+
+    def set_model(self, raw_model: str) -> None:
+        """Update the SDK model, accepting either raw or normalized ids."""
+        self._model = _normalize_model_name(raw_model)
 
     # --------------------------------------------------------------------- #
     # Internal helpers                                                       #

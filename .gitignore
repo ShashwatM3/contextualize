@@ -1,9 +1,8 @@
 /node_modules
 
 # Secrets — never commit (GitHub push protection will block)
-/bin/.env.*
-bin/.env.local
 **/.env.local
+**/.env.*
 
 # Python
 __pycache__/
@@ -12,5 +11,3 @@ __pycache__/
 
 # Generated output
 .contextualize/
-# Local CLI history (per project)
-.contextualize/cli-history.jsonl

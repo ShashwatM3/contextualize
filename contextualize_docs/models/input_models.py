@@ -93,8 +93,8 @@ class GenerationConfig(BaseModel):
     include_gotchas: bool = True
     task_scope_strict: bool = True
     prefer_repo_patterns_over_generic_docs: bool = True
-    llm_provider: str = "gemini"
-    llm_model: str = "gemini-2.5-flash"
+    llm_provider: str = "vercel"
+    llm_model: str = "google/gemini-2.5-flash"
 
 
 # ---------------------------------------------------------------------------

@@ -73,6 +73,10 @@ class VercelGatewayProvider(LLMProvider):
         self._max_retries = config.llm_max_retries
         self._timeout = config.llm_timeout_seconds
 
+    def set_model(self, raw_model: str) -> None:
+        """Update the gateway model id."""
+        self._model = raw_model
+
     # ------------------------------------------------------------------ #
     # Internal                                                            #
     # ------------------------------------------------------------------ #

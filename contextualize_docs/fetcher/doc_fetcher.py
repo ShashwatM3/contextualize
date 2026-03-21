@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import html
 import re
+import urllib.parse
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -236,7 +237,6 @@ async def _search_web_for_docs(
         # DuckDuckGo prepends their redirector
         if top_url.startswith("//duckduckgo.com/l/?uddg="):
             top_url = top_url.split("uddg=")[1].split("&")[0]
-            import urllib.parse
             top_url = urllib.parse.unquote(top_url)
             
         logger.info("Web search found docs candidate for %s: %s", library_name, top_url)
@@ -332,5 +332,6 @@ async def fetch_docs_for_all(
             ", ".join(failed),
         )
 
-    logger.info("Fetched docs for %d/%d libraries.", len(fetched), len(entries))
+    unique_libraries = len({f.library for f in fetched})
+    logger.info("Fetched docs for %d/%d libraries.", unique_libraries, len(entries))
     return fetched

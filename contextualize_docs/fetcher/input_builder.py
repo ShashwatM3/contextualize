@@ -77,21 +77,25 @@ async def build_input_from_deps(
     logger.info("Fetching docs for %d libraries…", len(library_entries))
     fetched_list: list[FetchedDocs] = await fetch_docs_for_all(library_entries)
 
-    # Map library name → fetched docs for quick lookup
-    fetched_map: dict[str, FetchedDocs] = {f.library: f for f in fetched_list}
+    # Map library name → best version string found across all fetched sources.
+    # A library can have multiple FetchedDocs (npm + PyPI + web); keep the first
+    # non-empty version so PyPI/npm versions don't silently overwrite each other.
+    version_map: dict[str, str] = {}
+    for f in fetched_list:
+        if f.library not in version_map and f.version:
+            version_map[f.library] = f.version
 
     # Build Dependency objects
     dependencies: list[Dependency] = []
     for entry in library_entries:
         name = entry.name if hasattr(entry, "name") else entry
         category = entry.category if hasattr(entry, "category") else ""
-        
-        fetched = fetched_map.get(name)
+
         dependencies.append(Dependency(
             name=name,
-            version=fetched.version if fetched else "",
+            version=version_map.get(name, ""),
             used_in_task=True,
-            confidence=0.9 if fetched else 0.5,
+            confidence=0.9 if name in version_map else 0.5,
             # Pass category if the input_models.Dependency supports it.
             # (If it doesn't currently support `category`, ignoring it for now is safe).
         ))
