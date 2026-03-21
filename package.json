@@ -1,0 +1,20 @@
+{
+  "name": "contextualize",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Basic contextualize CLI",
+  "bin": {
+    "contextualize": "./bin/contextualize"
+  },
+  "scripts": {
+    "contextualize": "node ./bin/contextualize.js"
+  },
+  "dependencies": {
+    "@types/node": "^25.5.0",
+    "ai": "^6.0.134",
+    "dotenv": "^17.3.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
