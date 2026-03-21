@@ -22,6 +22,28 @@ class RelevantAPI(BaseModel):
     pitfalls: list[str] = Field(default_factory=list)
 
 
+class CoreAPI(BaseModel):
+    """An API strictly required for the MVP of the task."""
+    
+    name: str
+    usage_pattern: str
+    why_core: str
+
+
+class OptionalAPI(BaseModel):
+    """An API that is useful but not required for the MVP."""
+    
+    name: str
+    why_optional: str
+
+
+class RepoPatternStatus(BaseModel):
+    """Describes whether repo-specific usage patterns were found."""
+    
+    has_repo_evidence: bool
+    message: str
+
+
 class MinimalExample(BaseModel):
     """A short, canonical code example."""
 
@@ -58,12 +80,63 @@ class ContextCard(BaseModel):
         max_length=300,
         description="Max 2 sentences. Why the agent needs this lib for the current task.",
     )
+    first_working_code_goal: str = Field(
+        ...,
+        description="The smallest correct working outcome. Must be concrete and testable."
+    )
+    first_step_for_agent: str = Field(
+        ..., 
+        description="A single concrete, actionable instruction for how to begin."
+    )
+    architecture_recommendation: str = Field(
+        ...,
+        description="Short recommendation of how to structure the implementation."
+    )
+    repo_pattern_status: RepoPatternStatus
+    integration_strategy_when_no_repo_pattern: str = Field(
+        default="",
+        description="How to integrate safely when no precedent exists, emphasizing minimal coupling."
+    )
+    implementation_plan: list[str] = Field(
+        ...,
+        description="Ordered list of 3-6 steps representing a minimal working path."
+    )
+    mvp_boundary: str = Field(
+        ...,
+        description="Explicit stopping rule for initial implementation to prevent premature complexity."
+    )
+    quality_upgrade_path: list[str] = Field(
+        default_factory=list,
+        description="Ordered improvements after MVP works, not overlapping with implementation_plan."
+    )
+    core_apis_for_task: list[CoreAPI] = Field(
+        default_factory=list,
+        description="Subset of relevant_apis strictly needed for this task."
+    )
+    optional_apis_for_task: list[OptionalAPI] = Field(
+        default_factory=list,
+        description="APIs that are useful but not required for MVP."
+    )
     relevant_apis: list[RelevantAPI] = Field(
         default_factory=list,
-        description="Max 5 entries unless clearly justified.",
+        description="Max 5 entries unless clearly justified. Superset of core APIs.",
     )
     repo_patterns: list[str] = Field(default_factory=list)
     minimal_examples: list[MinimalExample] = Field(default_factory=list)
+    do_not_use: list[str] = Field(
+        default_factory=list,
+        description="Incorrect APIs, SDKs, or approaches for this task with reasons."
+    )
+    do_not_build_yet: list[str] = Field(
+        default_factory=list,
+        description="Things that would be overengineering for this task."
+    )
+    common_failure_modes_for_this_task: list[str] = Field(default_factory=list)
+    decision_shortcuts: list[str] = Field(
+        default_factory=list,
+        description="Fast rules to help agent choose between alternatives."
+    )
+    success_criteria: list[str] = Field(default_factory=list)
     gotchas: list[str] = Field(default_factory=list)
     rules_for_agent: list[str] = Field(
         default_factory=list,

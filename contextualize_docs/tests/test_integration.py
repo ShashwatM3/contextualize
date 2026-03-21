@@ -44,6 +44,16 @@ class MockGeminiProvider(LLMProvider):
             "task_focus": "Add password reset flow",
             "purpose_in_repo": "Used for form validation in this repo.",
             "why_relevant_for_task": "Validates the password reset email input.",
+            "first_working_code_goal": "A simple string validation.",
+            "first_step_for_agent": "Import z from zod.",
+            "architecture_recommendation": "Use a central validators file.",
+            "repo_pattern_status": {"has_repo_evidence": True, "message": ""},
+            "integration_strategy_when_no_repo_pattern": "",
+            "implementation_plan": ["Step 1", "Step 2", "Step 3"],
+            "mvp_boundary": "Stop when validation passes.",
+            "quality_upgrade_path": ["Add async parsing"],
+            "core_apis_for_task": [{"name": "safeParse", "usage_pattern": "z.string().safeParse(x)", "why_core": "Core"}],
+            "optional_apis_for_task": [],
             "relevant_apis": [
                 {
                     "name": "safeParse",
@@ -71,6 +81,11 @@ class MockGeminiProvider(LLMProvider):
                 "Reuse resetSchema from lib/validators/auth.ts.",
                 "Do not introduce Yup.",
             ],
+            "do_not_use": ["Yup"],
+            "do_not_build_yet": ["Complex async validation"],
+            "common_failure_modes_for_this_task": ["Forgot to check success false"],
+            "decision_shortcuts": ["Use Zod."],
+            "success_criteria": ["Email is validated"],
             "source_evidence": {
                 "docs_chunk_ids": ["zod_001"],
                 "repo_files": ["lib/validators/auth.ts"],

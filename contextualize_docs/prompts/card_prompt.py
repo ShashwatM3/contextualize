@@ -22,8 +22,37 @@ _OUTPUT_SCHEMA = """\
   "normalized_name": "<lowercase, scope-stripped safe name>",
   "version": "<version string>",
   "task_focus": "<task title>",
-  "purpose_in_repo": "<max 2 sentences — how the repo uses this lib>",
-  "why_relevant_for_task": "<max 2 sentences — why this lib matters for the task>",
+  "purpose_in_repo": "<max 2 sentences — MUST reference repo context if available>",
+  "why_relevant_for_task": "<max 2 sentences — MUST be strictly task-specific>",
+  "first_working_code_goal": "<Concrete, testable, smallest correct working outcome>",
+  "first_step_for_agent": "<A single concrete, actionable instruction for how to begin implementation>",
+  "architecture_recommendation": "<short recommendation of how to structure the implementation in this repo>",
+  "repo_pattern_status": {
+    "has_repo_evidence": true,
+    "message": "<If false, explain: No existing usage found; default to minimal isolated integration.>"
+  },
+  "integration_strategy_when_no_repo_pattern": "<How to integrate safely when no precedent exists, emphasizing minimal coupling. Leave empty if repo_pattern_status is true.>",
+  "implementation_plan": [
+    "<Step 1: concrete action>",
+    "<Step 2: concrete action>"
+  ],
+  "mvp_boundary": "<Explicit stopping rule for initial implementation to prevent premature complexity.>",
+  "quality_upgrade_path": [
+    "<Improvement 1 after MVP works, MUST NOT overlap with implementation_plan>"
+  ],
+  "core_apis_for_task": [
+    {
+      "name": "<strictly required API for MVP>",
+      "usage_pattern": "<real code shape showing how to instantiate/call it>",
+      "why_core": "<why this is core for THIS task>"
+    }
+  ],
+  "optional_apis_for_task": [
+    {
+      "name": "<useful API but not required for MVP>",
+      "why_optional": "<why this is optional>"
+    }
+  ],
   "relevant_apis": [
     {
       "name": "<function/method name>",
@@ -43,8 +72,23 @@ _OUTPUT_SCHEMA = """\
       "code": "<canonical code snippet>"
     }
   ],
+  "do_not_use": [
+    "<incorrect API, SDK, or approach for this task - include reasoning>"
+  ],
+  "do_not_build_yet": [
+    "<overengineering thing to explicitly avoid for this MVP>"
+  ],
+  "common_failure_modes_for_this_task": [
+    "<realistic mistake the agent might make specifically for THIS task>"
+  ],
+  "decision_shortcuts": [
+    "<fast rules to help choose between alternatives>"
+  ],
+  "success_criteria": [
+    "<observable condition that indicates the task is complete>"
+  ],
   "gotchas": ["<gotcha>"],
-  "rules_for_agent": ["<imperative rule>"],
+  "rules_for_agent": ["<imperative, implementation-focused rule (no generic descriptions)>"],
   "source_evidence": {
     "docs_chunk_ids": ["<chunk_id>"],
     "repo_files": ["<file path>"],
@@ -142,13 +186,22 @@ Generate one agent-native context card for the dependency described below.
 {snippets_block}
 
 === INSTRUCTIONS ===
-- Write for a coding agent about to implement this task. Not for a human.
-- Prefer repo-local patterns over generic documentation advice.
-- Include only APIs relevant to the task.
+- Write a task-specific execution pack for a coding agent about to implement this task. Not for a human readers.
+- Tell the agent WHAT TO DO NEXT, not just what it should know. Fields MUST resemble actual code usage wherever possible.
+- Identify the MINIMAL APIs needed (core_apis_for_task) with concrete `usage_pattern`s and explicitly segregate optional ones (optional_apis_for_task).
+- first_working_code_goal must be the smallest correct working outcome.
+- explicit MVP vs Quality separation: do not mix first_working_code_goal and quality_upgrade_path.
+- implementation_plan MUST be an ordered list of 3-6 steps representing a minimal working path, not full feature coverage.
+- explicitly forbid INCORRECT approaches in do_not_use.
+- explicitly forbid OVERBUILDING in do_not_build_yet. Define mvp_boundary clearly to prevent premature complexity.
+- Define success_criteria as observable conditions.
+- Specify a first_step_for_agent to get the agent moving immediately.
+- If repo evidence is missing, do NOT silently leave repo_patterns empty. Set repo_pattern_status.has_repo_evidence to false, provide a message, AND fill integration_strategy_when_no_repo_pattern.
+- Rules MUST be imperative and implementation-focused (e.g. "Do X", "Call Y"). 
 - {"Include minimal canonical code examples." if include_examples else "Omit minimal_examples (return empty list)."}
 - {"Include gotchas and pitfalls." if include_gotchas else "Omit gotchas (return empty list)."}
 - Do NOT fabricate APIs not present in the evidence above.
-- Set confidence between 0 and 1 — lower when evidence is sparse.
+- Set confidence between 0 and 1 — reduce confidence if documentation is incomplete.
 - Return ONLY the following JSON structure, no extra text:
 
 {_OUTPUT_SCHEMA}

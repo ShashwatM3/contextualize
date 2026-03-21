@@ -72,6 +72,40 @@ def validate_and_fix(card: ContextCard, config: AppConfig) -> tuple[ContextCard,
     if not se.docs_chunk_ids and not se.repo_files and not se.source_urls:
         warnings.append(f"{card.library}: source_evidence is completely empty")
 
+    # --- first_step_for_agent / architecture_recommendation length ---
+    if len(card.first_step_for_agent) > 300:
+        updates["first_step_for_agent"] = truncate(card.first_step_for_agent, 300)
+        warnings.append(f"{card.library}: first_step_for_agent truncated to 300 chars")
+    if len(card.architecture_recommendation) > 500:
+        updates["architecture_recommendation"] = truncate(card.architecture_recommendation, 500)
+        warnings.append(f"{card.library}: architecture_recommendation truncated to 500 chars")
+
+    # --- Cap implementation_plan ---
+    if len(card.implementation_plan) > 6:
+        updates["implementation_plan"] = list(card.implementation_plan[:6])
+        warnings.append(f"{card.library}: implementation_plan truncated to 6 entries")
+
+    # --- Core APIs sanity checks ---
+    if not card.core_apis_for_task and card.relevant_apis:
+        warnings.append(f"{card.library}: no core_apis_for_task identified but relevant_apis exist")
+    elif len(card.core_apis_for_task) > 5:
+        updates["core_apis_for_task"] = list(card.core_apis_for_task[:5])
+        warnings.append(f"{card.library}: core_apis_for_task truncated to 5 entries")
+
+    # --- Optional APIs bounds ---
+    if len(card.optional_apis_for_task) > 5:
+        updates["optional_apis_for_task"] = list(card.optional_apis_for_task[:5])
+        warnings.append(f"{card.library}: optional_apis_for_task truncated to 5 entries")
+
+    # --- Upgrade path & heuristics bounds ---
+    if len(card.quality_upgrade_path) > 5:
+        updates["quality_upgrade_path"] = list(card.quality_upgrade_path[:5])
+        warnings.append(f"{card.library}: quality_upgrade_path truncated to 5 entries")
+    
+    if len(card.decision_shortcuts) > 5:
+        updates["decision_shortcuts"] = list(card.decision_shortcuts[:5])
+        warnings.append(f"{card.library}: decision_shortcuts truncated to 5 entries")
+
     if updates:
         card = card.model_copy(update=updates)
 
