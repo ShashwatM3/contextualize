@@ -4,3 +4,11 @@
 /bin/.env.*
 bin/.env.local
 **/.env.local
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+
+# Generated output
+.contextualize/
