@@ -4,3 +4,6 @@
 /bin/.env.*
 bin/.env.local
 **/.env.local
+
+# Local CLI history (per project)
+.contextualize/cli-history.jsonl
