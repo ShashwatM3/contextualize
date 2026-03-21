@@ -1,0 +1,93 @@
+{
+  "task": {
+    "id": "task_001",
+    "title": "Add password reset flow",
+    "description": "Implement password reset in the auth pages using the existing auth stack.",
+    "goal": "Generate task-scoped agent-native docs for the coding agent.",
+    "task_type": "feature",
+    "relevant_paths": [
+      "app/auth/reset-password/page.tsx",
+      "components/auth/reset-form.tsx",
+      "lib/supabase/client.ts"
+    ],
+    "relevant_symbols": [
+      "ResetPasswordForm",
+      "createClient"
+    ]
+  },
+  "repo_context": {
+    "project_name": "my-app",
+    "languages": ["TypeScript"],
+    "frameworks": ["Next.js", "React"],
+    "package_managers": ["pnpm"],
+    "detected_patterns": [
+      "Server actions are preferred for mutations",
+      "Validation uses Zod",
+      "Auth uses shared Supabase client wrapper"
+    ],
+    "relevant_files": [
+      {
+        "path": "lib/supabase/client.ts",
+        "reason": "Shared client factory"
+      }
+    ],
+    "usage_snippets": [
+      {
+        "library": "@supabase/supabase-js",
+        "file": "lib/auth.ts",
+        "symbol": "createClient",
+        "code": "const supabase = createClient();"
+      },
+      {
+        "library": "zod",
+        "file": "lib/validators/auth.ts",
+        "symbol": "resetSchema",
+        "code": "export const resetSchema = z.object({ email: z.string().email() })"
+      }
+    ]
+  },
+  "dependencies": [
+    {
+      "name": "@supabase/supabase-js",
+      "version": "2.49.1",
+      "category": "auth/backend",
+      "used_in_task": true,
+      "confidence": 0.97
+    },
+    {
+      "name": "zod",
+      "version": "3.24.2",
+      "category": "validation",
+      "used_in_task": true,
+      "confidence": 0.94
+    }
+  ],
+  "docs_context": [
+    {
+      "library": "@supabase/supabase-js",
+      "source_type": "official_docs",
+      "source_url": "https://supabase.com/docs/reference/javascript/auth-resetpasswordforemail",
+      "title": "resetPasswordForEmail",
+      "chunk_id": "supabase_001",
+      "content": "Sends a password reset request to an email address. Requires the email address of the user.\n\n```js\nconst { data, error } = await supabase.auth.resetPasswordForEmail('user@example.com', {\n  redirectTo: 'https://example.com/update-password',\n})\n```\n\nParameters:\n- email (required): The email address of the user.\n- options.redirectTo (optional): The URL to send the user to after they click the password reset link.\n- options.captchaToken (optional): Verification token from a CAPTCHA provider.\n\nReturns: A promise that resolves to an object with `data` and `error` properties."
+    },
+    {
+      "library": "zod",
+      "source_type": "official_docs",
+      "source_url": "https://zod.dev",
+      "title": "Basic string validation",
+      "chunk_id": "zod_001",
+      "content": "Zod allows string validation with methods like email(), min(), max(), and url().\n\n```ts\nconst schema = z.object({\n  email: z.string().email(),\n  name: z.string().min(2).max(100),\n});\n\nconst result = schema.safeParse(data);\nif (!result.success) {\n  console.error(result.error.format());\n}\n```\n\nKey methods:\n- z.string().email() - validates email format\n- z.string().min(n) - minimum length\n- z.string().max(n) - maximum length\n- schema.safeParse(data) - validates without throwing\n- schema.parse(data) - validates and throws on failure"
+    }
+  ],
+  "generation_config": {
+    "output_format": "context_card_json",
+    "max_cards": 5,
+    "include_examples": true,
+    "include_gotchas": true,
+    "task_scope_strict": true,
+    "prefer_repo_patterns_over_generic_docs": true,
+    "llm_provider": "vercel",
+    "llm_model": "google/gemini-2.5-flash"
+  }
+}

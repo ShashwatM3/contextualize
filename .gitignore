@@ -12,3 +12,5 @@ __pycache__/
 
 # Generated output
 .contextualize/
+# Local CLI history (per project)
+.contextualize/cli-history.jsonl
