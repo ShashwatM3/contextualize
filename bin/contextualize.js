@@ -8,6 +8,7 @@ import {
   readFileSync,
   writeFileSync,
 } from "node:fs";
+import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
@@ -261,6 +262,23 @@ async function understandTask() {
 }
 
 /**
+ * Creates (or updates) the personal Cursor skill for using Contextualize.
+ * Reads content from the bundled contextualize-skill.md and writes it to
+ * ~/.cursor/skills/using-contextualize/SKILL.md.
+ */
+function createContextualizeSkill() {
+  printBoxBlue("Creating new agent skill...");
+
+  const skillDir = join(homedir(), ".cursor", "skills", "using-contextualize");
+  mkdirSync(skillDir, { recursive: true });
+
+  const skillContent = readFileSync(join(__dirname, "contextualize-skill.md"), "utf8");
+  writeFileSync(join(skillDir, "SKILL.md"), skillContent, "utf8");
+  confirmation(`Successfully Created — skill saved to ${join(skillDir, "SKILL.md")}`);
+}
+
+
+/**
  * Full "fetch docs" workflow:
  * 1. Understand the codebase task from concat files.
  * 2. Call the Python compile-from-deps pipeline with that task.
@@ -328,6 +346,7 @@ async function runFetchDocs() {
   }
 
   confirmation("Documentation fetched and compiled successfully.");
+  createContextualizeSkill();
 }
 
 function printUsage() {
