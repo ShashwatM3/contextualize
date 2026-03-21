@@ -11,6 +11,7 @@
     "contextualize": "node ./bin/contextualize.js"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^3.0.47",
     "@types/node": "^25.5.0",
     "ai": "^6.0.134",
     "boxen": "^8.0.1",

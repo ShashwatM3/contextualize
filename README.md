@@ -29,3 +29,12 @@ Structure of the .contextualize folder:
 
 
 Atin will be working inside the fetchDocsPlaceholder
+
+todos
+=====
+CREATE A NEW SKILL THAT MAKES CONTEXTUALIZE COMPATIBLE WITH AGENTS (SKILLS)
+- manually
+
+TO CREATE A NEW SKILL
+npx skills init my-skill
+
