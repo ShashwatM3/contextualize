@@ -5,5 +5,12 @@
 bin/.env.local
 **/.env.local
 
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+
+# Generated output
+.contextualize/
 # Local CLI history (per project)
 .contextualize/cli-history.jsonl

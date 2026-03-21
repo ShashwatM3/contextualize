@@ -203,9 +203,24 @@ async function scanPlaceholder() {
   }
 }
 
-function fetchDocsPlaceholder() {
-  // fetch_docs_agent()
-  return "fetching docs";
+function fetchDocs(inputJsonPath, outputDir) {
+  const python = resolve(__dirname, "..", ".venv", "bin", "python3");
+  const cmd = existsSync(python) ? python : "python3";
+  const args = ["-m", "contextualize_docs", "--output-dir", outputDir];
+  if (inputJsonPath) {
+    args.push("--input", inputJsonPath);
+  }
+  try {
+    const result = execSync([cmd, ...args].join(" "), {
+      encoding: "utf8",
+      cwd: resolve(__dirname, ".."),
+    });
+    return result;
+  } catch (err) {
+    console.error("Docs compilation failed:", err.message);
+    process.exitCode = 1;
+    return JSON.stringify({ success: false, error: err.message });
+  }
 }
 
 function printUsage() {
@@ -262,7 +277,9 @@ async function main(argv) {
   }
 
   else if (command === "fetch" && subcommand === "docs") {
-    console.log(fetchDocsPlaceholder());
+    const inputPath = argv[2] || null;
+    const outputDir = argv[3] || ".contextualize";
+    console.log(fetchDocs(inputPath, outputDir));
     return;
   }
 
