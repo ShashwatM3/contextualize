@@ -1,20 +1,18 @@
-"""Quick debug script for the Gemini LLM provider.
+"""Quick debug script for the OpenAI LLM provider.
 
-Mirrors exactly what GeminiProvider does so you can isolate 404s
+Mirrors exactly what OpenAIProvider does so you can isolate 404s
 without running the full pipeline.
 
 Usage:
     python debug_llm.py
 """
 
-import asyncio
 import os
 import sys
 from pathlib import Path
 
+import httpx
 from dotenv import load_dotenv
-from google import genai
-from google.genai import types as genai_types
 
 # Load .env.local the same way AppConfig does
 for parent in [Path.cwd(), *Path.cwd().parents]:
@@ -24,45 +22,38 @@ for parent in [Path.cwd(), *Path.cwd().parents]:
         print(f"Loaded env from: {candidate}")
         break
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-RAW_MODEL = os.getenv("CONTEXTUALIZE_LLM_MODEL", "google/gemini-2.5-flash")
-MODEL = RAW_MODEL.split("/", 1)[-1] if "/" in RAW_MODEL else RAW_MODEL
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+MODEL = os.getenv("CONTEXTUALIZE_LLM_MODEL", "gpt-4.1-mini")
 
-print(f"GEMINI_API_KEY set: {'yes' if GEMINI_API_KEY else 'NO — this will fail'}")
-print(f"Model (raw):        {RAW_MODEL}")
-print(f"Model (SDK):        {MODEL}")
+print(f"OPENAI_API_KEY set: {'yes' if OPENAI_API_KEY else 'NO — this will fail'}")
+print(f"Model:              {MODEL}")
 print()
 
-if not GEMINI_API_KEY:
-    print("ERROR: GEMINI_API_KEY is not set. Add it to .env.local")
+if not OPENAI_API_KEY:
+    print("ERROR: OPENAI_API_KEY is not set. Add it to .env.local")
     sys.exit(1)
 
-client = genai.Client(api_key=GEMINI_API_KEY)
-
-
-async def test_generate() -> None:
-    print(f"Sending test prompt to {MODEL!r} …")
-    try:
-        response = client.models.generate_content(
-            model=MODEL,
-            contents="Say hello in one word.",
-            config=genai_types.GenerateContentConfig(
-                system_instruction="You are a helpful assistant.",
-                temperature=0.2,
-            ),
-        )
-        print(f"Response: {response.text!r}")
-        print("\nSUCCESS — the model is reachable.")
-    except Exception as exc:
-        print(f"\nFAILED: {exc}")
-        print()
-        print("Listing available models so you can find the right name:")
-        try:
-            models = client.models.list()
-            for m in models:
-                print(f"  {m.name}")
-        except Exception as list_exc:
-            print(f"  Could not list models: {list_exc}")
-
-
-asyncio.run(test_generate())
+print(f"Sending test prompt to {MODEL!r} …")
+try:
+    response = httpx.post(
+        "https://api.openai.com/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": MODEL,
+            "messages": [
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "Say hello in one word."},
+            ],
+            "temperature": 0.2,
+        },
+        timeout=30.0,
+    )
+    response.raise_for_status()
+    text = response.json()["choices"][0]["message"]["content"]
+    print(f"Response: {text!r}")
+    print("\nSUCCESS — the model is reachable.")
+except Exception as exc:
+    print(f"\nFAILED: {exc}")

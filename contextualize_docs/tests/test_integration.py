@@ -1,4 +1,4 @@
-"""Integration test — full pipeline with mocked Gemini provider."""
+"""Integration test — full pipeline with mocked provider."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from contextualize_docs.providers.base import LLMProvider
 # Mock provider that returns realistic structured output              #
 # ------------------------------------------------------------------ #
 
-class MockGeminiProvider(LLMProvider):
+class MockLLMProvider(LLMProvider):
     """Returns a pre-built card JSON for any request."""
 
     def __init__(self, card_overrides: dict[str, Any] | None = None):
@@ -104,8 +104,8 @@ class MockGeminiProvider(LLMProvider):
 @pytest.mark.asyncio
 async def test_full_pipeline_with_mock(sample_payload: ContextualizeInput, tmp_path: Path):
     """Run the entire pipeline with a mock provider and verify output."""
-    config = AppConfig(gemini_api_key="test-key")
-    provider = MockGeminiProvider()
+    config = AppConfig(openai_api_key="test-key")
+    provider = MockLLMProvider()
 
     summary = await run_pipeline(
         payload=sample_payload,
@@ -163,8 +163,8 @@ async def test_pipeline_skips_low_confidence_deps(tmp_path: Path):
         ],
     )
 
-    config = AppConfig(gemini_api_key="test", min_confidence_threshold=0.5)
-    provider = MockGeminiProvider()
+    config = AppConfig(openai_api_key="test", min_confidence_threshold=0.5)
+    provider = MockLLMProvider()
 
     summary = await run_pipeline(payload, provider, tmp_path, config)
 
@@ -181,8 +181,8 @@ async def test_pipeline_respects_max_cards(sample_payload: ContextualizeInput, t
         update={"generation_config": sample_payload.generation_config.model_copy(update={"max_cards": 1})}
     )
 
-    config = AppConfig(gemini_api_key="test")
-    provider = MockGeminiProvider()
+    config = AppConfig(openai_api_key="test")
+    provider = MockLLMProvider()
 
     summary = await run_pipeline(payload, provider, tmp_path, config)
 

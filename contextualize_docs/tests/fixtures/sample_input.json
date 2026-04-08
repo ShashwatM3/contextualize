@@ -87,7 +87,7 @@
     "include_gotchas": true,
     "task_scope_strict": true,
     "prefer_repo_patterns_over_generic_docs": true,
-    "llm_provider": "vercel",
-    "llm_model": "google/gemini-2.5-flash"
+    "llm_provider": "openai",
+    "llm_model": "gpt-4.1-mini"
   }
 }

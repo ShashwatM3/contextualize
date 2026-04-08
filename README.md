@@ -16,7 +16,7 @@ Use it when you want coding assistants to “know” your stack—frameworks, SD
 3. **`fetch docs`** — Reads those concat files to summarize what the codebase is building, then runs the Python **contextualize-docs** compiler to fetch and distill documentation into **context cards** under `.contextualize/docs/` (including `index.json` and `cards/`). On success it also installs/updates the **Cursor skill** at `~/.cursor/skills/using-contextualize/SKILL.md` so agents know how to use this workflow.
 4. **`web`** — Serves a small local viewer (default port **4297**) for dependency/context cards—handy after a docs run.
 5. ** 'debug' ** — Analyzes your code trace -> checks previous github issues + documentation for increased context -> produces RSA + Fix Suggestion 
-6. **Free-form prompts** — Any invocation that is not a subcommand is sent to **Gemini** as a single prompt and streamed to your terminal.
+6. **Free-form prompts** — Any invocation that is not a subcommand is sent to **OpenAI (`gpt-4.1-mini`)** as a single prompt and streamed to your terminal.
 
 Command history for the current project is appended to `.contextualize/cli-history.jsonl`.
 
@@ -83,9 +83,7 @@ Create a **`.env.local`** at the **root of the project you are analyzing** (the 
 
 | Variable | Used for |
 |----------|-----------|
-| **`GEMINI_API_KEY`** | Dependency analysis during `scan`, codebase “task” understanding and **free-form prompts** (`contextualize <prompt>`). |
-| **`VERCEL_AI_GATEWAY_KEY`** | Primary path for the **Python** docs compiler (see `contextualize_docs/config.py`). |
-| **`GEMINI_API_KEY`** (again) | Fallback for the docs pipeline when the gateway key is not set. |
+| **`OPENAI_API_KEY`** | Required for dependency analysis during `scan`, codebase task understanding, free-form prompts, and docs compilation. |
 
 Optional tuning for the docs compiler (see `contextualize_docs/config.py`): `CONTEXTUALIZE_LLM_MODEL`, `CONTEXTUALIZE_LLM_TEMP`, `CONTEXTUALIZE_LLM_RETRIES`, `CONTEXTUALIZE_LLM_TIMEOUT`, `CONTEXTUALIZE_MIN_CONFIDENCE`.
 
@@ -118,7 +116,7 @@ Then open the URL printed in the terminal (or visit `http://127.0.0.1:4297`) to 
 | `contextualize history` | Show commands recorded in this project. |
 | `contextualize banner` | Banner only. |
 | `contextualize terminal` | Lightweight terminal check (placeholder). |
-| `contextualize <prompt>` | Stream an LLM reply (requires `GEMINI_API_KEY`). |
+| `contextualize <prompt>` | Stream an LLM reply (requires `OPENAI_API_KEY`). |
 
 ---
 
@@ -148,10 +146,10 @@ Then open the URL printed in the terminal (or visit `http://127.0.0.1:4297`) to 
 
 ## Troubleshooting
 
-- **`GEMINI_API_KEY is not set`** — Add it to `.env.local` in the project root (or next to `bin/` for CLI-only use).
+- **`OPENAI_API_KEY is not set`** — Add it to `.env.local` in the project root (or next to `bin/` for CLI-only use).
 - **`No concat files found` / missing `dependencies.json`** — Run `contextualize scan` from the repository root first.
 - **Rate limits during `scan`** — Dependency analysis calls the model per concat file; if you hit limits, partial results may still be written to `dependencies.json`. The CLI surfaces a short message when this happens.
-- **Python errors on `fetch docs`** — Ensure Python 3.11+, run `pip install -e .` from this repo, and that `GEMINI_API_KEY` or `VERCEL_AI_GATEWAY_KEY` is set for the docs pipeline.
+- **Python errors on `fetch docs`** — Ensure Python 3.11+, run `pip install -e .` from this repo, and that `OPENAI_API_KEY` is set for the docs pipeline.
 
 ---
 

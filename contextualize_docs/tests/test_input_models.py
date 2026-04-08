@@ -57,7 +57,7 @@ class TestGenerationConfig:
     def test_defaults(self):
         g = GenerationConfig()
         assert g.max_cards == 5
-        assert g.llm_provider == "gemini"
+        assert g.llm_provider == "openai"
         assert g.include_examples is True
 
     def test_max_cards_bounds(self):
@@ -91,5 +91,5 @@ class TestContextualizeInput:
             "dependencies": [],
         }
         payload = ContextualizeInput.model_validate(minimal)
-        assert payload.generation_config.llm_provider == "gemini"
+        assert payload.generation_config.llm_provider == "openai"
         assert payload.docs_context == []

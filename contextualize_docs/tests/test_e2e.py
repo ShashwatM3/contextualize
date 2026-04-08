@@ -31,10 +31,10 @@ class TestE2EWithMockedProvider:
         """Run orchestrator directly (simulating CLI flow) with mocked provider."""
         from contextualize_docs.config import AppConfig
         from contextualize_docs.pipeline.orchestrator import run_pipeline
-        from contextualize_docs.tests.test_integration import MockGeminiProvider
+        from contextualize_docs.tests.test_integration import MockLLMProvider
 
-        config = AppConfig(gemini_api_key="test-key")
-        provider = MockGeminiProvider()
+        config = AppConfig(openai_api_key="test-key")
+        provider = MockLLMProvider()
 
         summary = await run_pipeline(
             payload=sample_payload,

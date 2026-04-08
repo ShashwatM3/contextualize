@@ -56,8 +56,8 @@ async def build_input_from_deps(
     task_title: str,
     task_description: str,
     project_root: Path,
-    llm_provider: str = "vercel",
-    llm_model: str = "google/gemini-2.5-flash",
+    llm_provider: str = "openai",
+    llm_model: str = "gpt-4.1-mini",
     max_cards: int = 10,
 ) -> ContextualizeInput:
     """Fetch docs for all libraries and build a ContextualizeInput payload.

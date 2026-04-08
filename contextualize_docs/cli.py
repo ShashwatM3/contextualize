@@ -116,26 +116,18 @@ def _read_input(path: Path | None) -> str:
 def _make_provider(config: AppConfig, requested_provider: str) -> LLMProvider:
     """Instantiate the appropriate LLM provider.
 
-    Priority:
-    1. vercel  — uses VERCEL_AI_GATEWAY_KEY
-    2. gemini  — uses GEMINI_API_KEY directly via google-genai SDK
+    Supported:
+    1. openai — uses OPENAI_API_KEY
     """
-    from contextualize_docs.providers.vercel_gateway_provider import VercelGatewayProvider
+    from contextualize_docs.providers.openai_provider import OpenAIProvider
 
     provider_name = requested_provider.lower().strip()
 
-    if provider_name in ("vercel", "vercel_gateway", ""):
-        if config.vercel_gateway_key:
-            return VercelGatewayProvider(config)
-        logger.warning("VERCEL_AI_GATEWAY_KEY not set; attempting direct Gemini SDK fallback.")
-        provider_name = "gemini"
-
-    if provider_name == "gemini":
-        from contextualize_docs.providers.gemini_provider import GeminiProvider
-        return GeminiProvider(config)
+    if provider_name in ("openai", ""):
+        return OpenAIProvider(config)
 
     raise ProviderError(
-        f"Unknown provider '{requested_provider}'. Supported: 'vercel', 'gemini'."
+        f"Unknown provider '{requested_provider}'. Supported: 'openai'."
     )
 
 

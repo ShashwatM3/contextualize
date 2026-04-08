@@ -59,10 +59,10 @@ npx contextualize <command>
 Add a `.env.local` at the project root (or inside `bin/`):
 
 ```
-GEMINI_API_KEY=your_gemini_api_key_here
+OPENAI_API_KEY=your_openai_api_key_here
 ```
 
-Get a free Gemini API key at https://aistudio.google.com/
+Get an OpenAI API key at https://platform.openai.com/api-keys
 
 ---
 
@@ -110,7 +110,7 @@ The deep codebase analysis step. Runs two phases in sequence:
   code lives where across the entire project
 
 **Phase 2 — AI-powered dependency extraction:**
-- Sends each concat file through Gemini AI
+- Sends each concat file through OpenAI
 - Identifies every library, framework, SDK, and external tool imported or used
 - Deduplicates entries across all folders
 - Saves the full structured dependency list to
@@ -136,7 +136,7 @@ The documentation compilation step — the most powerful command in the suite.
 **What it does internally:**
 
 1. **Understands the codebase task** — reads all concat files from
-   `.contextualize/scan/concats/` and uses Gemini 2.5 Flash to generate a
+   `.contextualize/scan/concats/` and uses OpenAI `gpt-4.1-mini` to generate a
    detailed natural-language description of what the project is building.
    This task description drives smarter documentation filtering.
 
@@ -178,7 +178,7 @@ for retracing what was scanned, when, and in what order.
 
 ### `contextualize <any prompt>`
 
-Streams a freeform response from Gemini 2.5 Flash directly in the terminal.
+Streams a freeform response from OpenAI `gpt-4.1-mini` directly in the terminal.
 Useful for quick codebase questions without leaving the CLI context.
 
 ```bash
@@ -298,12 +298,12 @@ Run `contextualize scan` before `contextualize fetch docs`.
 **"Dependencies file not found"**
 Run `contextualize scan` — it generates `dependencies.json`.
 
-**"GEMINI_API_KEY is not set"**
-Add `GEMINI_API_KEY=your_key` to `.env.local` at the project root.
+**"OPENAI_API_KEY is not set"**
+Add `OPENAI_API_KEY=your_key` to `.env.local` at the project root.
 
 **Rate limit warnings during scan**
-The free Gemini tier has rate limits. Purchase Vercel AI credits at
-https://vercel.com/~/ai?modal=top-up, or wait and re-run the scan.
+OpenAI can return rate limits depending on plan and usage. Wait briefly and re-run
+or use an account with higher limits.
 
 **Dependency analysis stopped early (rate limited)**
 A partial `dependencies.json` is still saved. Run `contextualize fetch docs`
@@ -325,5 +325,5 @@ contextualize scan          Scan codebase + extract dependencies
 contextualize fetch docs    Fetch docs for all dependencies
 contextualize web           Open dependency viewer in browser
 contextualize history       Show command history
-contextualize <prompt>      Ask Gemini anything from the terminal
+contextualize <prompt>      Ask OpenAI anything from the terminal
 ```

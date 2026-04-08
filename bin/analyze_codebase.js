@@ -1,4 +1,4 @@
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createOpenAI } from "@ai-sdk/openai";
 import { streamText } from "ai";
 
 export function extractDependencySignals(concatText) {
@@ -31,14 +31,14 @@ export async function analyzeDependencies(concatText) {
   const signals = extractDependencySignals(concatText);
   if (!signals.trim()) return "[]";
 
-  if (!process.env.GEMINI_API_KEY) {
-    throw new Error("GEMINI_API_KEY is not set — add it to .env.local");
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error("OPENAI_API_KEY is not set — add it to .env.local");
   }
 
-  const google = createGoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY });
+  const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
   const result = streamText({
-    model: google("gemini-2.5-flash"),
+    model: openai("gpt-4.1-mini"),
     system: `You identify external third-party tools, APIs, and services used in a project.
 Given import statements and environment variable names, return a JSON array of objects with shape:
 { "name": string, "category": string }

@@ -125,8 +125,8 @@ class TestManifestFile:
     def test_valid(self):
         m = ManifestFile(
             generated_at="2025-01-01T00:00:00Z",
-            llm_provider="gemini",
-            llm_model="gemini-2.5-flash",
+            llm_provider="openai",
+            llm_model="gpt-4.1-mini",
             input_hash="abc123",
             card_count=2,
             dependency_count=2,

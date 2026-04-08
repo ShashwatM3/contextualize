@@ -31,4 +31,4 @@ def sample_payload(sample_input_json: dict) -> ContextualizeInput:
 @pytest.fixture()
 def app_config() -> AppConfig:
     """Return a config that does NOT require a real API key."""
-    return AppConfig(gemini_api_key="test-key-not-real")
+    return AppConfig(openai_api_key="test-key-not-real")

@@ -8,10 +8,11 @@ import {
   readFileSync,
   writeFileSync,
 } from "node:fs";
+import { createInterface } from "node:readline/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createOpenAI } from "@ai-sdk/openai";
 import { streamText } from "ai";
 import dotenv from "dotenv";
 import { printBanner } from "./banner.js";
@@ -63,11 +64,495 @@ function terminalPlaceholder() {
   return execSync("ls", { encoding: "utf8" });
 }
 
+const CONTEXTUALIZE_ROOT = ".contextualize";
+const LAST_ERROR_FILE = join(CONTEXTUALIZE_ROOT, "last_error.log");
+const DEBUG_DIR = join(CONTEXTUALIZE_ROOT, "debug");
+const VERTEX_CONFIG_FILE = join(CONTEXTUALIZE_ROOT, "vertex_config.json");
+const ISSUES_STORE_FILE = join(CONTEXTUALIZE_ROOT, "issues_store.json");
+const SUGGESTED_LABELS = [
+  "bug",
+  "dependency",
+  "config",
+  "api",
+  "llm",
+  "performance",
+  "enhancement",
+  "infra",
+];
+
+function ensureContextualizeLayout() {
+  mkdirSync(CONTEXTUALIZE_ROOT, { recursive: true });
+  mkdirSync(join(CONTEXTUALIZE_ROOT, "scan"), { recursive: true });
+  mkdirSync(join(CONTEXTUALIZE_ROOT, "docs"), { recursive: true });
+  mkdirSync(join(CONTEXTUALIZE_ROOT, "cat"), { recursive: true });
+  mkdirSync(DEBUG_DIR, { recursive: true });
+  if (!existsSync(LAST_ERROR_FILE)) {
+    writeFileSync(LAST_ERROR_FILE, "", "utf8");
+  }
+  if (!existsSync(ISSUES_STORE_FILE)) {
+    writeFileSync(ISSUES_STORE_FILE, "[]\n", "utf8");
+  }
+}
+
+async function promptUser(question) {
+  const rl = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  try {
+    const answer = await rl.question(question);
+    return answer.trim();
+  } finally {
+    rl.close();
+  }
+}
+
+async function askYesNo(question, defaultYes = true) {
+  const suffix = defaultYes ? " [Y/n]: " : " [y/N]: ";
+  const raw = (await promptUser(question + suffix)).toLowerCase();
+  if (!raw) return defaultYes;
+  return raw === "y" || raw === "yes";
+}
+
+function readJsonOrDefault(path, fallback) {
+  if (!existsSync(path)) return fallback;
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    return fallback;
+  }
+}
+
+function deriveDependencySignal(trace) {
+  const stack = String(trace || "");
+  let dependencyIssueLikely = false;
+  let reason = "No obvious dependency signal found.";
+  let detectedPackage = null;
+
+  const moduleMissing = stack.match(/No module named ['"]([^'"]+)['"]/i);
+  const npmMissing = stack.match(/Cannot find module ['"]([^'"]+)['"]/i);
+
+  if (moduleMissing?.[1] || npmMissing?.[1]) {
+    dependencyIssueLikely = true;
+    detectedPackage = moduleMissing?.[1] ?? npmMissing?.[1] ?? null;
+    reason = `Stack trace indicates a missing module (${detectedPackage}).`;
+  } else if (
+    /ImportError|ModuleNotFoundError|Cannot find module|package .* not found/i.test(stack)
+  ) {
+    dependencyIssueLikely = true;
+    reason = "Stack trace contains import or package resolution failure patterns.";
+  }
+
+  const deps = readJsonOrDefault(join(CONTEXTUALIZE_ROOT, "scan/dependencies.json"), []);
+  if (!detectedPackage && Array.isArray(deps)) {
+    const traceLower = stack.toLowerCase();
+    const hit = deps.find((d) => {
+      const name = String(d?.name || "").toLowerCase();
+      return name && traceLower.includes(name);
+    });
+    if (hit?.name) {
+      dependencyIssueLikely = true;
+      detectedPackage = hit.name;
+      reason = `Stack trace references dependency name "${hit.name}".`;
+    }
+  }
+
+  return { dependencyIssueLikely, reason, detectedPackage };
+}
+
+function selectBestDocChunks(trace, maxChars = 9000) {
+  const docsDir = join(CONTEXTUALIZE_ROOT, "docs");
+  if (!existsSync(docsDir)) return [];
+  const files = readdirSync(docsDir).filter((f) => f.endsWith(".md"));
+  if (!files.length) return [];
+
+  const tokens = Array.from(
+    new Set(
+      String(trace || "")
+        .toLowerCase()
+        .split(/[^a-z0-9._-]+/g)
+        .filter((x) => x.length > 2)
+        .slice(0, 200),
+    ),
+  );
+
+  const scored = [];
+  for (const file of files) {
+    try {
+      const raw = readFileSync(join(docsDir, file), "utf8");
+      const text = raw.slice(0, 20000);
+      const lower = text.toLowerCase();
+      let score = 0;
+      for (const t of tokens) {
+        if (lower.includes(t)) score += 1;
+      }
+      if (score > 0) {
+        scored.push({ file, score, text });
+      }
+    } catch {
+      // skip unreadable files
+    }
+  }
+
+  scored.sort((a, b) => b.score - a.score);
+  const chunks = [];
+  let used = 0;
+  for (const item of scored.slice(0, 4)) {
+    const budget = Math.max(500, maxChars - used);
+    const snippet = item.text.slice(0, budget);
+    chunks.push(`### ${item.file}\n${snippet}`);
+    used += snippet.length;
+    if (used >= maxChars) break;
+  }
+  return chunks;
+}
+
+function fetchSimilarIssuesFromStore(trace, k = 5) {
+  const issues = readJsonOrDefault(ISSUES_STORE_FILE, []);
+  if (!Array.isArray(issues) || !issues.length) return [];
+  const traceLower = String(trace || "").toLowerCase();
+  const tokens = traceLower.split(/[^a-z0-9._-]+/g).filter(Boolean);
+  const unique = Array.from(new Set(tokens));
+
+  const scored = issues
+    .map((issue) => {
+      const hay = `${issue.title || ""}\n${issue.body || ""}`.toLowerCase();
+      let score = 0;
+      for (const t of unique) {
+        if (t.length < 3) continue;
+        if (hay.includes(t)) score += 1;
+      }
+      return { issue, score };
+    })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, k)
+    .map((x) => x.issue);
+
+  return scored;
+}
+
+function runPythonInline(script) {
+  const packageRoot = resolve(__dirname, "..");
+  const pythonVenv = join(packageRoot, ".venv", "bin", "python3");
+  const python = existsSync(pythonVenv) ? pythonVenv : "python3";
+  const pythonPath = process.env.PYTHONPATH
+    ? `${packageRoot}:${process.env.PYTHONPATH}`
+    : packageRoot;
+
+  return spawnSync(
+    python,
+    ["-c", script],
+    {
+      encoding: "utf8",
+      cwd: process.cwd(),
+      env: { ...process.env, PYTHONPATH: pythonPath },
+      maxBuffer: 100 * 1024 * 1024,
+    },
+  );
+}
+
+function queryVertexSimilarIssues(trace, k = 5) {
+  const cfg = readJsonOrDefault(VERTEX_CONFIG_FILE, null);
+  if (!cfg || !cfg.project_id || !cfg.index_endpoint_name || !cfg.deployed_index_id) {
+    return [];
+  }
+
+  const script = `
+import json
+import vertexai
+from vertexai.language_models import TextEmbeddingModel
+from google.cloud import aiplatform
+
+cfg = json.loads(${JSON.stringify(JSON.stringify(cfg))})
+trace = ${JSON.stringify(trace)}
+top_k = int(${JSON.stringify(k)})
+
+vertexai.init(project=cfg["project_id"], location=cfg.get("region", "us-central1"))
+aiplatform.init(project=cfg["project_id"], location=cfg.get("region", "us-central1"))
+
+model = TextEmbeddingModel.from_pretrained("text-embedding-005")
+query_vec = model.get_embeddings([trace])[0].values
+
+endpoint = aiplatform.MatchingEngineIndexEndpoint(index_endpoint_name=cfg["index_endpoint_name"])
+neighbors = endpoint.find_neighbors(
+    deployed_index_id=cfg["deployed_index_id"],
+    queries=[query_vec],
+    num_neighbors=top_k,
+)
+
+items = []
+for n in neighbors[0]:
+    item = {
+        "id": getattr(n, "id", None),
+        "distance": getattr(n, "distance", None),
+    }
+    md = getattr(n, "embedding_metadata", None)
+    if md and isinstance(md, dict):
+        item["title"] = md.get("title")
+        item["body"] = md.get("body")
+        item["labels"] = md.get("labels")
+    items.append(item)
+
+print(json.dumps(items))
+`;
+  const result = runPythonInline(script);
+  if (result.status !== 0) return [];
+  try {
+    const parsed = JSON.parse(result.stdout.trim());
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function addIssueToLocalStore(issue) {
+  const issues = readJsonOrDefault(ISSUES_STORE_FILE, []);
+  const arr = Array.isArray(issues) ? issues : [];
+  arr.push(issue);
+  writeFileSync(ISSUES_STORE_FILE, JSON.stringify(arr, null, 2) + "\n", "utf8");
+}
+
+function addIssueToVertex(issue) {
+  const cfg = readJsonOrDefault(VERTEX_CONFIG_FILE, null);
+  if (!cfg || !cfg.project_id || !cfg.index_name) {
+    return { ok: false, message: "Missing .contextualize/vertex_config.json with project_id + index_name." };
+  }
+  const script = `
+import json
+import vertexai
+from vertexai.language_models import TextEmbeddingModel
+from google.cloud import aiplatform
+
+cfg = json.loads(${JSON.stringify(JSON.stringify(cfg))})
+issue = json.loads(${JSON.stringify(JSON.stringify(issue))})
+
+vertexai.init(project=cfg["project_id"], location=cfg.get("region", "us-central1"))
+aiplatform.init(project=cfg["project_id"], location=cfg.get("region", "us-central1"))
+model = TextEmbeddingModel.from_pretrained("text-embedding-005")
+text = f"{issue.get('title', '')}\\n{issue.get('body', '')}\\nlabels: {', '.join(issue.get('labels', []))}"
+embedding = model.get_embeddings([text])[0].values
+
+index = aiplatform.MatchingEngineIndex(index_name=cfg["index_name"])
+index.upsert_datapoints([
+    {
+      "datapoint_id": issue["id"],
+      "feature_vector": embedding,
+      "restricts": [{"namespace": "labels", "allow_list": issue.get("labels", [])}],
+      "embedding_metadata": {
+        "title": issue.get("title", ""),
+        "body": issue.get("body", ""),
+        "labels": ",".join(issue.get("labels", [])),
+      },
+    }
+])
+print("ok")
+`;
+  const result = runPythonInline(script);
+  if (result.status !== 0) {
+    return { ok: false, message: result.stderr?.trim() || "Failed to upsert issue to Vertex." };
+  }
+  return { ok: true, message: "Issue added to Vertex index." };
+}
+
+function buildFixPromptMarkdown({
+  stackTrace,
+  dependencySignal,
+  similarIssues,
+  docContextChunks,
+  rcaResponse,
+}) {
+  const issuesText = similarIssues.length
+    ? similarIssues
+      .map((i, idx) => `- [${idx + 1}] ${i.title || i.id || "issue"} | labels: ${Array.isArray(i.labels) ? i.labels.join(", ") : (i.labels || "")}\n  ${String(i.body || "").slice(0, 400)}`)
+      .join("\n")
+    : "- No similar issues found.";
+  const docsText = docContextChunks.length
+    ? docContextChunks.join("\n\n")
+    : "No documentation context found in .contextualize/docs.";
+  return `# Contextualize Debug -> Fix Prompt
+
+## Stack Trace
+\`\`\`
+${stackTrace}
+\`\`\`
+
+## Dependency Signal
+- dependencyIssueLikely: ${dependencySignal.dependencyIssueLikely}
+- reason: ${dependencySignal.reason}
+- detectedPackage: ${dependencySignal.detectedPackage ?? "n/a"}
+
+## Similar Issues
+${issuesText}
+
+## Retrieved Documentation
+${docsText}
+
+## RCA + Fix Suggestion (OpenAI gpt-4.1-mini)
+${rcaResponse}
+
+## Task
+Apply the smallest safe code change that fixes this issue. Include:
+1) Root cause confirmation
+2) Exact file-level edits
+3) Validation steps and expected output
+4) Edge cases and rollback plan
+`;
+}
+
+async function runAddIssue() {
+  ensureContextualizeLayout();
+  printBoxBlue("Add issue to Contextualize issue memory");
+  printWhiteBullet("Suggested labels: " + SUGGESTED_LABELS.join(", "));
+
+  const title = await promptUser("Issue title: ");
+  if (!title) {
+    printBoxOrange("Title is required.");
+    process.exitCode = 1;
+    return;
+  }
+  const labelsRaw = await promptUser("Labels (comma-separated): ");
+  const body = await promptUser("Issue details / resolution notes: ");
+  if (!body) {
+    printBoxOrange("Issue details are required.");
+    process.exitCode = 1;
+    return;
+  }
+  const labels = labelsRaw
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+  const issue = {
+    id: `issue_${Date.now()}`,
+    title,
+    labels,
+    body,
+    created_at: new Date().toISOString(),
+  };
+
+  addIssueToLocalStore(issue);
+  confirmation("Issue saved locally to .contextualize/issues_store.json");
+
+  const shouldPushToVertex = await askYesNo("Also add this issue to Vertex AI index?", true);
+  if (!shouldPushToVertex) return;
+
+  const upsert = addIssueToVertex(issue);
+  if (upsert.ok) {
+    confirmation(upsert.message);
+  } else {
+    printBoxOrange(`Vertex upsert skipped/failed: ${upsert.message}`);
+  }
+}
+
+async function runDebug(argv) {
+  ensureContextualizeLayout();
+
+  let trace = null;
+  const traceFlagIndex = argv.findIndex((x) => x === "--trace");
+  if (traceFlagIndex >= 0) {
+    trace = argv.slice(traceFlagIndex + 1).join(" ").trim();
+  }
+
+  if (!trace) {
+    const stored = existsSync(LAST_ERROR_FILE)
+      ? readFileSync(LAST_ERROR_FILE, "utf8").trim()
+      : "";
+    if (stored) {
+      trace = stored;
+      printBlueBullet("Using stack trace from .contextualize/last_error.log");
+    }
+  }
+
+  if (!trace) {
+    trace = await promptUser("Paste stack trace: ");
+  }
+
+  if (!trace) {
+    printBoxOrange("No stack trace provided.");
+    process.exitCode = 1;
+    return;
+  }
+
+  writeFileSync(LAST_ERROR_FILE, trace + "\n", "utf8");
+  printBoxBlue("Running contextualize debug pipeline...");
+
+  const dependencySignal = deriveDependencySignal(trace);
+  const [similarIssues, docChunks] = await Promise.all([
+    (async () => {
+      const vertex = queryVertexSimilarIssues(trace, 5);
+      if (vertex.length) return vertex;
+      return fetchSimilarIssuesFromStore(trace, 5);
+    })(),
+    (async () => selectBestDocChunks(trace, 9000))(),
+  ]);
+
+  if (!process.env.OPENAI_API_KEY) {
+    printBoxOrange("OPENAI_API_KEY is not set — cannot generate RCA.");
+    process.exitCode = 1;
+    return;
+  }
+
+  const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const prompt = [
+    "You are a senior debugging engineer.",
+    "Given stack trace, likely dependency signal, similar issues, and docs snippets, produce:",
+    "1) Root Cause Analysis",
+    "2) Fix suggestion (concrete steps, small safe change)",
+    "3) Validation checklist",
+    "",
+    `Stack trace:\n${trace}`,
+    "",
+    `Dependency signal:\n${JSON.stringify(dependencySignal, null, 2)}`,
+    "",
+    `Similar issues:\n${JSON.stringify(similarIssues, null, 2)}`,
+    "",
+    `Documentation snippets:\n${docChunks.join("\n\n") || "No docs found."}`,
+  ].join("\n");
+
+  const result = streamText({
+    model: openai("gpt-4.1-mini"),
+    prompt,
+  });
+
+  let rca = "";
+  for await (const textPart of result.textStream) {
+    process.stdout.write(textPart);
+    rca += textPart;
+  }
+  process.stdout.write("\n");
+
+  const md = buildFixPromptMarkdown({
+    stackTrace: trace,
+    dependencySignal,
+    similarIssues,
+    docContextChunks: docChunks,
+    rcaResponse: rca.trim(),
+  });
+  const promptPath = join(DEBUG_DIR, "fix_prompt.md");
+  writeFileSync(promptPath, md, "utf8");
+  confirmation(`Fix prompt generated at ${promptPath}`);
+
+  const shouldInvokeCodex = await askYesNo("Invoke Codex with this prompt now?", false);
+  if (shouldInvokeCodex) {
+    const cmd = `codex "$(cat "${promptPath}")"`;
+    const invoke = spawnSync(cmd, {
+      shell: true,
+      stdio: "inherit",
+      cwd: process.cwd(),
+      env: process.env,
+    });
+    if (invoke.status !== 0) {
+      printBoxOrange("Codex invocation failed.");
+      process.exitCode = invoke.status ?? 1;
+      return;
+    }
+    confirmation("Codex invocation complete.");
+  }
+}
+
 function initPlaceholder() {
   printBanner();
-  terminalCall("mkdir -p .contextualize/scan");
-  terminalCall("mkdir -p .contextualize/docs");
-  terminalCall("mkdir -p .contextualize/cat");
+  ensureContextualizeLayout();
   printInitManual();
 }
 
@@ -245,14 +730,14 @@ async function understandTask() {
 
   if (samples.length === 0) return null;
 
-  if (!process.env.GEMINI_API_KEY) {
-    printBoxOrange("GEMINI_API_KEY is not set — cannot understand codebase task.");
+  if (!process.env.OPENAI_API_KEY) {
+    printBoxOrange("OPENAI_API_KEY is not set — cannot understand codebase task.");
     return null;
   }
 
-  const google = createGoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY });
+  const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const result = streamText({
-    model: google("gemini-2.5-flash"),
+    model: openai("gpt-4.1-mini"),
     system: `You are a senior engineer. Given concatenated source files from a project, write a detailed task description (3-4 sentences) that describes exactly what this project/codebase is trying to solve or build. Be specific about the technologies used, the core features, and the end goal. Write it in plain prose — no bullet points, no headings.`,
     prompt: `Analyze these source files and describe what this project is building/solving:\n\n${samples.join("\n\n")}`,
   });
@@ -355,6 +840,8 @@ function printUsage() {
   console.log("  contextualize scan            — scan the project (WIP)");
   console.log("  contextualize web             — view dependencies in browser");
   console.log("  contextualize fetch docs      — contextualize agent with docs (WIP)");
+  console.log("  contextualize debug [--trace] — RCA + fix suggestion from stack trace");
+  console.log("  contextualize add issue       — add issue memory (local + Vertex)");
   console.log("  contextualize history         — commands you’ve run here");
   console.log("  contextualize banner          — welcome banner only");
   console.log("  contextualize terminal        — quick terminal check");
@@ -402,6 +889,16 @@ async function main(argv) {
     return;
   }
 
+  if (command === "debug") {
+    await runDebug(argv.slice(1));
+    return;
+  }
+
+  if (command === "add" && subcommand === "issue") {
+    await runAddIssue();
+    return;
+  }
+
   else if (command === "fetch" && subcommand === "docs") {
     await runFetchDocs();
     return;
@@ -413,14 +910,14 @@ async function main(argv) {
   }
 
   else if (command) {
-    if (!process.env.GEMINI_API_KEY) {
-      printBoxOrange("GEMINI_API_KEY is not set — add it to .env.local");
+    if (!process.env.OPENAI_API_KEY) {
+      printBoxOrange("OPENAI_API_KEY is not set — add it to .env.local");
       process.exitCode = 1;
       return;
     }
-    const google = createGoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY });
+    const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const result = streamText({
-      model: google("gemini-2.5-flash"),
+      model: openai("gpt-4.1-mini"),
       prompt: argv.join(" "),
     });
     for await (const textPart of result.textStream) {
