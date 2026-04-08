@@ -12,7 +12,8 @@ Use it when you want coding assistants to “know” your stack—frameworks, SD
 2. **`scan`** — Walks the tree (skipping heavy or sensitive paths), concatenates each folder’s files into `.contextualize/scan/concats/`, then uses an LLM to infer dependencies and writes `.contextualize/scan/dependencies.json`.
 3. **`fetch docs`** — Reads those concat files to summarize what the codebase is building, then runs the Python **contextualize-docs** compiler to fetch and distill documentation into **context cards** under `.contextualize/docs/` (including `index.json` and `cards/`). On success it also installs/updates the **Cursor skill** at `~/.cursor/skills/using-contextualize/SKILL.md` so agents know how to use this workflow.
 4. **`web`** — Serves a small local viewer (default port **4297**) for dependency/context cards—handy after a docs run.
-5. **Free-form prompts** — Any invocation that is not a subcommand is sent to **Gemini** as a single prompt and streamed to your terminal.
+5. ** 'debug' ** — Analyzes your code trace -> checks previous github issues + documentation for increased context -> produces RSA + Fix Suggestion 
+6. **Free-form prompts** — Any invocation that is not a subcommand is sent to **Gemini** as a single prompt and streamed to your terminal.
 
 Command history for the current project is appended to `.contextualize/cli-history.jsonl`.
 
